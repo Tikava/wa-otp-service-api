@@ -35,7 +35,7 @@ class Business(Base):
     admin_id: Mapped[int] = mapped_column(ForeignKey("admins.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     whatsapp_api_token: Mapped[str] = mapped_column(String(255), nullable=False)
-    whatsapp_phone_number_id: Mapped[BigInteger] = mapped_column(BigInteger(), nullable=False)
+    phone_number_id: Mapped[BigInteger] = mapped_column(BigInteger(), nullable=False)
     created_at: Mapped[DateTime] = mapped_column(DateTime(), server_default=func.now())
     
     admin: Mapped["Admin"] = relationship(back_populates="businesses")
@@ -60,8 +60,8 @@ class Client(Base):
     
 
 class UserStatus(enum.Enum):
-    VERIFIED = "verified"
-    NOT_VERIFIED = "not_verified"
+    VERIFIED = "VERIFIED"
+    NOT_VERIFIED = "NOT_VERIFIED"
 
 class User(Base):
     __tablename__ = "users"
