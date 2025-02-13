@@ -1,21 +1,46 @@
+import secrets
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
 
-from src.database.models import Client
+from src.database.models import Client, Business
 
-async def create_client(session: AsyncSession, business_id: int, scopes: str, api_key: str) -> Client:
-    client = Client(business_id=business_id, scopes=scopes, api_key=api_key)
-    session.add(client)
+
+def generate_api_key() -> str:
+    return secrets.token_hex(32)
+
+
+async def create_client_to_business(session: AsyncSession, business_id: int, name: str, scopes: str) -> Client:
+    # Check if the business exists
+    stmt = select(Business).where(Business.id == business_id)
+    result = await session.execute(stmt)
+    business = result.scalar_one_or_none()
+
+    if not business:
+        raise ValueError("Business not found. Ensure the business ID is correct.")
+
+    # Generate API key
+    api_key = generate_api_key()
+    new_client = Client(business_id=business_id, name=name, scopes=scopes, api_key=api_key)
+    session.add(new_client)
 
     try:
-        await session.flush()
         await session.commit()
-        return client
-    except IntegrityError:
+        await session.refresh(new_client)
+        return new_client
+
+    except IntegrityError as e:
         await session.rollback()
-        raise ValueError("Client with this API key already exists.")
+        
+        error_message = str(e.orig).lower()
+        if "unique constraint" in error_message and "clients.api_key" in error_message:
+            raise ValueError("Client creation failed. The generated API key already exists. Please try again.")
+        elif "foreign key constraint" in error_message:
+            raise ValueError("Client creation failed. The associated business does not exist.")
+        
+        raise ValueError("Client creation failed due to a database constraint violation.")
 
 
 async def get_client_by_api_key(session: AsyncSession, api_key: str) -> Client:

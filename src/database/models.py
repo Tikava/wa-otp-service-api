@@ -51,6 +51,7 @@ class Client(Base):
     __tablename__ = "clients"
     
     id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
     business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"))
     scopes: Mapped[str] = mapped_column(String(255))
     api_key: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
