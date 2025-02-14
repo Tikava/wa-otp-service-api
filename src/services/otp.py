@@ -14,93 +14,106 @@ from src.services.user import get_or_create_user
 EXPIRATION_MINUTES = 5
 
 
-async def generate_otp(length: int = 6) -> str:
+def generate_otp(length: int = 6) -> str:
     return "".join(str(random.randint(0, 9)) for _ in range(length))
 
 async def create_otp(session: AsyncSession, phone_number: str, client_id: int, length: int, expiration_minutes: int = EXPIRATION_MINUTES) -> OTP:
-    user = await get_or_create_user(session, phone_number)
-    
-    
-    otp_code = await generate_otp(length)
-    expires_at = datetime.time() + timedelta(minutes=expiration_minutes)
-    
-    new_otp = OTP(
-        user_id=user.id,
-        client_id=client_id,
-        otp_code=otp_code,
-        expires_at=expires_at,
-    )
-
-    session.add(new_otp)
-
     try:
+        user = await get_or_create_user(session, phone_number)
+        await session.commit()
+        
+        otp_code = generate_otp(length)
+        expires_at = datetime.now() + timedelta(minutes=expiration_minutes)
+        
+        new_otp = OTP(
+            user_id=user.id,
+            client_id=client_id,
+            otp_code=otp_code,
+            expires_at=expires_at,
+        )
+
+        session.add(new_otp)
         await session.flush()
         await session.commit()
         return new_otp
     except IntegrityError:
         await session.rollback()
-        raise ValueError("OTP generation failed due to a unique constraint violation.")
+        raise ValueError(f"OTP generation failed for phone number {phone_number} and client ID {client_id} due to a unique constraint violation.")
+    except Exception as e:
+        await session.rollback()
+        raise ValueError(f"An error occurred while creating OTP: {str(e)}")
         
-    
+        
 async def send_otp(session: AsyncSession, api_key: str, phone_number: str, length: int) -> OTP:
-
-
-    stmt = select(Client).where(Client.api_key == api_key)
-    result = await session.execute(stmt)
-    client = result.scalar_one_or_none()
-
-    if not client:
-        raise ValueError("Invalid API key.")
-    
-    stmt = select(Business).where(Business.id == client.business_id)
-    result = await session.execute(stmt)
-    business = result.scalar_one_or_none()
-    
-    if not business:
-        raise ValueError("Business associated with this client not found.")
-
     try:
+
+        stmt = select(Client).where(Client.api_key == api_key)
+        result = await session.execute(stmt)
+        client = result.scalars().first()
+
+        if not client:
+            raise ValueError("Invalid API key provided.")
+        
+        stmt = select(Business).where(Business.id == client.business_id)
+        result = await session.execute(stmt)
+        business = result.scalars().first()
+
+        if not business:
+            raise ValueError("No business associated with the provided client.")
         
         otp_record = await create_otp(session, phone_number, client.id, length)
-
+        
         success = await send_whatsapp_template(
             phone_number, 
             otp_record.otp_code, 
             business.phone_number_id, 
             business.whatsapp_api_token
         )
-        
+
         if not success:
             await session.rollback()
-            raise ValueError("Failed to send OTP. Please try again.")
+            raise ValueError("Failed to send OTP. Please try again later.")
         
         await session.commit()
         return otp_record
-    except IntegrityError:
+    except ValueError as e:
         await session.rollback()
-        raise ValueError("OTP generation failed due to a database error.")
+        raise ValueError(f"Error in send_otp: {str(e)}")
+    except Exception as e:
+        await session.rollback()
+        raise ValueError(f"An unexpected error occurred while sending OTP: {str(e)}")
+
 
 async def verify_otp(session: AsyncSession, phone_number: str, otp_code: str, client: Client):
-    stmt = select(OTP).join(User).where(
-        User.phone_number == phone_number,
-        OTP.otp_code == otp_code,
-        OTP.client_id == client.id
-    )
-    result = await session.execute(stmt)
-    otp = result.scalar_one_or_none()
+    try:
+        stmt = select(OTP).join(User).where(
+            User.phone_number == phone_number,
+            OTP.otp_code == otp_code,
+            OTP.client_id == client.id
+        )
+        result = await session.execute(stmt)
+        otp = result.scalar_one_or_none()
 
-    if not otp:
-        raise ValueError("Invalid OTP or phone number.")
+        if not otp:
+            raise ValueError("Invalid OTP or phone number.")
 
-    if otp.expires_at < datetime.now():
-        raise ValueError("OTP has expired.")
+        if otp.expires_at < datetime.now():
+            raise ValueError("OTP has expired.")
 
-    if otp.is_used:
-        raise ValueError("OTP has already been used.")
+        if otp.is_used:
+            raise ValueError("OTP has already been used.")
 
-    return otp
+        return otp
+    except Exception as e:
+        raise ValueError(f"An error occurred while verifying OTP: {str(e)}")
+
 
 async def update_otp_status(session: AsyncSession, otp_code: str, is_used: bool):
-    await session.execute(
-        update(OTP).where(OTP.otp_code == otp_code).values(is_used=is_used)
-    )
+    try:
+        await session.execute(
+            update(OTP).where(OTP.otp_code == otp_code).values(is_used=is_used)
+        )
+        await session.commit()
+    except Exception as e:
+        await session.rollback()
+        raise ValueError(f"An error occurred while updating OTP status: {str(e)}")

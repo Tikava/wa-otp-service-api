@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     
     super_admin_secret: str
     jwt_secret: str
+    access_token_expire_minutes: int
     whatsapp_api_url: str
     whatsapp_api_version: str
     database_username: str
