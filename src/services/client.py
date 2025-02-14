@@ -47,9 +47,6 @@ async def get_client_by_api_key(session: AsyncSession, api_key: str) -> Client:
     result = await session.execute(select(Client).filter(Client.api_key == api_key))
     client = result.scalar_one_or_none()
 
-    if client is None:
-        raise ValueError("Client not found.")
-    
     return client
 
 

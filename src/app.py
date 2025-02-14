@@ -4,8 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.database import engine
 from src.database.models import Base
-from src.routes import admin
-from src.config import settings
+from src.routes import admin, otp, business
 
 
 @asynccontextmanager
@@ -30,6 +29,8 @@ app.add_middleware(
 
 # Included routers
 app.include_router(admin.router)
+app.include_router(business.router)
+app.include_router(otp.router)
 
 
 @app.get("/")

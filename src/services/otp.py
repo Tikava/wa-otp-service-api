@@ -1,11 +1,12 @@
 import random
 
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from datetime import datetime, timedelta
 
-from src.database.models import OTP, Client, Business
+from src.database.models import OTP, Client, Business, User
 from src.services.wa import send_whatsapp_template
 from src.services.user import get_or_create_user
 
@@ -79,47 +80,27 @@ async def send_otp(session: AsyncSession, api_key: str, phone_number: str, lengt
         await session.rollback()
         raise ValueError("OTP generation failed due to a database error.")
 
-
-
-async def get_otp_by_code(session: AsyncSession, otp_code: str) -> OTP:
-    result = await session.execute(select(OTP).filter(OTP.otp_code == otp_code))
+async def verify_otp(session: AsyncSession, phone_number: str, otp_code: str, client: Client):
+    stmt = select(OTP).join(User).where(
+        User.phone_number == phone_number,
+        OTP.otp_code == otp_code,
+        OTP.client_id == client.id
+    )
+    result = await session.execute(stmt)
     otp = result.scalar_one_or_none()
 
-    if otp is None:
-        raise ValueError("OTP not found.")
-    
-    return otp
+    if not otp:
+        raise ValueError("Invalid OTP or phone number.")
 
+    if otp.expires_at < datetime.now():
+        raise ValueError("OTP has expired.")
 
-async def verify_otp(session: AsyncSession, otp_code: str, user_id: int, business_id: int) -> OTP:
-    otp = await get_otp_by_code(session, otp_code)
-    
     if otp.is_used:
         raise ValueError("OTP has already been used.")
-    
-    if otp.user_id != user_id or otp.business_id != business_id:
-        raise ValueError("OTP does not belong to this user or business.")
-    
-    if otp.expires_at < datetime.time():
-        raise ValueError("OTP has expired.")
-    
-    otp.is_used = True
-    try:
-        await session.commit()  
-        return otp
-    except IntegrityError:
-        await session.rollback() 
-        raise ValueError("Error verifying OTP.")
 
+    return otp
 
-async def expire_otp(session: AsyncSession, otp_code: str) -> OTP:
-    otp = await get_otp_by_code(session, otp_code)
-    
-    otp.expires_at = datetime.time()  
-
-    try:
-        await session.commit() 
-        return otp
-    except IntegrityError:
-        await session.rollback() 
-        raise ValueError("Error expiring OTP.")
+async def update_otp_status(session: AsyncSession, otp_code: str, is_used: bool):
+    await session.execute(
+        update(OTP).where(OTP.otp_code == otp_code).values(is_used=is_used)
+    )

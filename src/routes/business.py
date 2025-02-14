@@ -5,7 +5,7 @@ from src.schemas.client import ClientCreateRequest, ClientCreateResponse
 from src.services.client import create_client_to_business
 
 
-router = APIRouter(prefix="/business", tags=["business"])
+router = APIRouter(prefix="/api/v1/business", tags=["business"])
 
 @router.post("/{id}/clients", response_model=ClientCreateResponse, status_code=201)
 async def create_client(

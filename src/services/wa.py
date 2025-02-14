@@ -1,6 +1,6 @@
 import httpx
 
-from config import settings
+from src.config import settings
 
 async def send_whatsapp_template(phone_number, otp_code, phone_number_id, whatsapp_api_token, language="en_US"):
     async with httpx.AsyncClient() as client:

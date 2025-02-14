@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.database import get_session
-from src.schemas.otp import OTPSendRequest, OTPSendResponse
-from src.services.otp import send_otp
+from src.database.models import UserStatus
+from src.schemas.otp import *
+from src.services.otp import *
+from src.services.client import get_client_by_api_key
+from src.services.user import update_user_status
 
-router = APIRouter(prefix="/otp", tags=["OTP"])
+router = APIRouter(prefix="/api/v1/otp", tags=["OTP"])
 
 @router.post("/send", response_model=OTPSendResponse, status_code=201)
 async def send_otp_handler(
@@ -22,3 +25,30 @@ async def send_otp_handler(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    
+
+@router.post("/verify", tags=["OTP"], response_model=OTPVerifyResponse)
+async def verify_otp_handler(
+    request: OTPVerifyRequest,
+    x_api_key: str = Header(...),
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Verifies an OTP code for a given phone number.
+    """
+    client = await get_client_by_api_key(session, x_api_key)
+
+    if not client:
+        raise HTTPException(status_code=403, detail="Invalid API key.")
+
+    otp = await verify_otp(session, request.phone_number, request.otp_code, client)
+
+    try:
+        await update_otp_status(session, otp.otp_code, True)
+        await update_user_status(session, otp.user_id, UserStatus.VERIFIED)
+        
+        await session.commit()
+        return OTPVerifyResponse(message="OTP verified successfully.")
+    except Exception:
+        await session.rollback()
+        raise HTTPException(status_code=500, detail="Error verifying OTP.")
