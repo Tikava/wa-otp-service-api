@@ -42,9 +42,6 @@ class Business(Base):
     clients: Mapped[List["Client"]] = relationship(
         back_populates="business", cascade="all, delete-orphan"
     )
-    otps: Mapped[List["OTP"]] = relationship(
-        back_populates="business", cascade="all, delete-orphan"
-    )
     
 
 class Client(Base):
@@ -58,6 +55,9 @@ class Client(Base):
     created_at: Mapped[DateTime] = mapped_column(DateTime(), server_default=func.now())
     
     business: Mapped["Business"] = relationship(back_populates="clients")
+    otps: Mapped[List["OTP"]] = relationship(
+        back_populates="clients", cascade="all, delete-orphan"
+    )
     
 
 class UserStatus(enum.Enum):
@@ -83,11 +83,11 @@ class OTP(Base):
     
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"))
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"))
     otp_code: Mapped[str] = mapped_column(String(10), index=True, nullable=False)
     created_at: Mapped[DateTime] = mapped_column(DateTime(), server_default=func.now())
     expires_at: Mapped[DateTime] = mapped_column(DateTime(), nullable=False)
     is_used: Mapped[bool] = mapped_column(Boolean(), default=False, index=True)
     
     user: Mapped["User"] = relationship(back_populates="otps")
-    business: Mapped["Business"] = relationship(back_populates="otps")
+    client: Mapped["Client"] = relationship(back_populates="otps")

@@ -2,10 +2,10 @@ import httpx
 
 from config import settings
 
-async def send_verify_code(phone_number, code, whatsapp_business_phone_number_id, whatsapp_api_token, language="en_US"):
+async def send_whatsapp_template(phone_number, otp_code, phone_number_id, whatsapp_api_token, language="en_US"):
     async with httpx.AsyncClient() as client:
         response = await client.post(
-        f"{settings.whatsapp_api_url}/{settings.whatsapp_api_version}/{whatsapp_business_phone_number_id}/messages",
+        f"{settings.whatsapp_api_url}/{settings.whatsapp_api_version}/{phone_number_id}/messages",
             json={
                 { 
                     "messaging_product": "whatsapp", 
@@ -20,7 +20,7 @@ async def send_verify_code(phone_number, code, whatsapp_business_phone_number_id
                                 "parameters": [
                                     {
                                         "type": "text",
-                                        "text": code
+                                        "text": otp_code
                                     }
                                 ]
                             },
@@ -31,7 +31,7 @@ async def send_verify_code(phone_number, code, whatsapp_business_phone_number_id
                                 "parameters": [
                                     {
                                         "type": "text",
-                                        "text": code
+                                        "text": otp_code
                                     }
                                 ]
                             }

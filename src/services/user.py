@@ -5,28 +5,24 @@ from sqlalchemy.future import select
 
 from src.database.models import User, UserStatus
 
-async def create_user(session: AsyncSession, phone_number: str) -> User:
+async def get_or_create_user(session: AsyncSession, phone_number: str) -> User:
 
-    user = User(phone_number=phone_number, status=UserStatus.NOT_VERIFIED)
-    session.add(user)
-
-    try:
-        await session.flush() 
-        await session.commit()
-        return user
-    except IntegrityError:
-        await session.rollback()
-        raise ValueError("User with this phone number already exists.")
-
-async def get_user_by_phone(session: AsyncSession, phone_number: str) -> User:
-
-    result = await session.execute(select(User).filter(User.phone_number == phone_number))
+    stmt = select(User).where(User.phone_number == phone_number)
+    result = await session.execute(stmt)
     user = result.scalar_one_or_none()
 
-    if user is None:
-        raise ValueError("User not found.")
+    if user:
+        return user
+
+    new_user = User(phone_number=phone_number, status=UserStatus.NOT_VERIFIED)
+    session.add(new_user)
     
-    return user
+    try:
+        await session.flush()
+        return new_user
+    except IntegrityError:
+        await session.rollback()
+        raise ValueError("User creation failed due to a unique constraint violation.")
 
 async def update_user_status(session: AsyncSession, user_id: int, new_status: UserStatus) -> User:
     result = await session.execute(select(User).filter(User.id == user_id))
