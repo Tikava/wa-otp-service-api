@@ -33,9 +33,7 @@ async def verify_otp_handler(
     x_api_key: str = Header(...),
     session: AsyncSession = Depends(get_session)
 ):
-    """
-    Verifies an OTP code for a given phone number.
-    """
+
     client = await get_client_by_api_key(session, x_api_key)
 
     if not client:
