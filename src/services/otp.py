@@ -1,7 +1,6 @@
 import random
 from typing import Optional
 
-from fastapi import HTTPException
 from sqlalchemy import update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -12,6 +11,7 @@ from datetime import datetime, timedelta
 from src.database.models import OTP, Client, Business, User
 from src.services.wa import send_whatsapp_template
 from src.services.user import get_or_create_user
+from src.exceptions.otp import *
 
 
 EXPIRATION_MINUTES = 5
@@ -191,12 +191,12 @@ class OTPService:
 
     @staticmethod
     async def verify_otp(
-        session: AsyncSession, 
-        phone_number: str, 
-        otp_code: str, 
+        session: AsyncSession,
+        phone_number: str,
+        otp_code: str,
         client: Client
     ) -> Optional[OTP]:
-
+        
         try:
             stmt = select(OTP).join(User).where(
                 User.phone_number == phone_number,
@@ -205,21 +205,24 @@ class OTPService:
             )
             result = await session.execute(stmt)
             otp = result.scalar_one_or_none()
-            
+
             if not otp:
-                return None
-            
-            # Validate OTP
+                raise InvalidOTPError("No matching OTP found")
+
+            # Validate OTP expiration
             if otp.expires_at < datetime.utcnow():
-                raise ValueError("OTP has expired.")
-            
+                raise OTPExpiredError("OTP has expired")
+
+            # Validate OTP usage
             if otp.is_used:
-                raise ValueError("OTP has already been used.")
-            
+                raise OTPAlreadyUsedError("OTP has already been used")
+
             return otp
-        
+
+        except (InvalidOTPError, OTPExpiredError, OTPAlreadyUsedError):
+            raise
         except Exception as e:
-            raise ValueError(f"OTP verification failed: {str(e)}")
+            raise RuntimeError("An unexpected error occurred during OTP verification", e)
 
     @staticmethod
     async def update_otp_status(
