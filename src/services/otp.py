@@ -1,5 +1,6 @@
 import random
 
+from fastapi import HTTPException
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -69,9 +70,9 @@ async def send_otp(session: AsyncSession, api_key: str, phone_number: str, lengt
 
 
 
+
 async def verify_otp(session: AsyncSession, phone_number: str, otp_code: str, client: Client):
     try:
-
         stmt = select(OTP).join(User).where(
             User.phone_number == phone_number,
             OTP.otp_code == otp_code,
@@ -81,18 +82,17 @@ async def verify_otp(session: AsyncSession, phone_number: str, otp_code: str, cl
         otp = result.scalar_one_or_none()
 
         if not otp:
-            raise ValueError("Invalid OTP or phone number.")
-
-        if otp.expires_at < datetime.now():
-            raise ValueError("OTP has expired.")
-
+            return None
+        
+        if otp.expires_at < datetime.utcnow():
+            raise HTTPException(status_code=400, detail="OTP has expired.")
+        
         if otp.is_used:
-            raise ValueError("OTP has already been used.")
+            raise HTTPException(status_code=400, detail="OTP has already been used.")
 
         return otp
     except Exception as e:
-        raise ValueError(f"An error occurred while verifying OTP: {str(e)}")
-
+        raise HTTPException(status_code=500, detail=f"An error occurred while verifying OTP: {str(e)}")
 
 
 async def update_otp_status(session: AsyncSession, otp_code: str, is_used: bool):

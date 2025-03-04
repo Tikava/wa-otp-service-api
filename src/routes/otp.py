@@ -33,20 +33,19 @@ async def verify_otp_handler(
     x_api_key: str = Header(...),
     session: AsyncSession = Depends(get_session)
 ):
-
     client = await get_client_by_api_key(session, x_api_key)
-
     if not client:
         raise HTTPException(status_code=403, detail="Invalid API key.")
-
+    
     otp = await verify_otp(session, request.phone_number, request.otp_code, client)
-
+    if not otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP or phone number.")
+    
     try:
         await update_otp_status(session, otp.otp_code, True)
         await update_user_status(session, otp.user_id, UserStatus.VERIFIED)
-        
         await session.commit()
         return OTPVerifyResponse(message="OTP verified successfully.")
-    except Exception:
+    except Exception as e:
         await session.rollback()
-        raise HTTPException(status_code=500, detail="Error verifying OTP.")
+        raise HTTPException(status_code=500, detail=f"Error verifying OTP: {str(e)}")
