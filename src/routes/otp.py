@@ -1,5 +1,8 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.database import get_session
 from src.database.models import UserStatus
 from src.schemas.otp import *
@@ -15,9 +18,24 @@ async def send_otp_handler(
     x_api_key: str = Header(...),
     session: AsyncSession = Depends(get_session)
 ):
+    """
+    Handler for sending OTP.
     
+    Args:
+        request (OTPSendRequest): Request containing phone number
+        x_api_key (str): API key in header
+        session (AsyncSession): Database session
+    
+    Returns:
+        OTPSendResponse: Response with OTP details
+    """
     try:
-        otp_record = await send_otp(session, x_api_key, request.phone_number, request.length)
+        otp_record = await OTPService.send_otp(
+            session, 
+            x_api_key, 
+            request.phone_number, 
+            request.length
+        )
         return OTPSendResponse(
             message="OTP sent successfully",
             otp_id=otp_record.id,
@@ -25,7 +43,6 @@ async def send_otp_handler(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    
 
 @router.post("/verify", tags=["OTP"], response_model=OTPVerifyResponse)
 async def verify_otp_handler(
@@ -33,19 +50,44 @@ async def verify_otp_handler(
     x_api_key: str = Header(...),
     session: AsyncSession = Depends(get_session)
 ):
-    client = await get_client_by_api_key(session, x_api_key)
-    if not client:
-        raise HTTPException(status_code=403, detail="Invalid API key.")
+    """
+    Handler for verifying OTP.
     
-    otp = await verify_otp(session, request.phone_number, request.otp_code, client)
-    if not otp:
-        raise HTTPException(status_code=400, detail="Invalid OTP or phone number.")
+    Args:
+        request (OTPVerifyRequest): Request with OTP details
+        x_api_key (str): API key in header
+        session (AsyncSession): Database session
     
+    Returns:
+        OTPVerifyResponse: Response indicating verification status
+    """
     try:
-        await update_otp_status(session, otp.otp_code, True)
-        await update_user_status(session, otp.user_id, UserStatus.VERIFIED)
+        # Validate client
+        client = await OTPService._validate_client(session, x_api_key)
+        
+        # Verify OTP
+        otp = await OTPService.verify_otp(
+            session, 
+            request.phone_number, 
+            request.otp_code, 
+            client
+        )
+        
+        if not otp:
+            raise HTTPException(status_code=400, detail="Invalid OTP or phone number.")
+        
+        # Update statuses
+        await OTPService.update_otp_status(session, otp.otp_code, True)
+        await session.execute(
+            update(User).where(User.id == otp.user_id).values(status=UserStatus.VERIFIED)
+        )
         await session.commit()
-        return OTPVerifyResponse(message="OTP verified successfully.")
+        
+        return OTPVerifyResponse(message="OTP verified successfully")
+    
+    except ValueError as e:
+        await session.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         await session.rollback()
-        raise HTTPException(status_code=500, detail=f"Error verifying OTP: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Verification error: {str(e)}")
