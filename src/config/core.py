@@ -9,8 +9,11 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int
     whatsapp_api_url: str
     whatsapp_api_version: str
-    database_url: str
-
+    db_name: str
+    db_host: str
+    db_port: int
+    db_user: str
+    db_password: str
 
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8')
     

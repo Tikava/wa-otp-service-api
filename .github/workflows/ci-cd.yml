@@ -1,0 +1,80 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - dev
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy (must be "master")'
+        required: true
+        default: master
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      BRANCH: ${{ github.ref_name != '' && github.ref_name || github.event.inputs.environment }}
+      IMAGE_ID: ghcr.io/${{ github.repository }}-${{ github.ref_name != '' && github.ref_name || github.event.inputs.environment }}:latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build and Push Docker image to GHCR
+        run: |
+          docker build -t $IMAGE_ID .
+          docker push $IMAGE_ID
+
+      - name: Deploy to Server
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            BRANCH=${BRANCH:-${{ github.ref_name || github.event.inputs.environment }}}
+            IMAGE_ID=ghcr.io/${{ github.repository }}-$BRANCH:latest
+            CONTAINER_NAME=wa-otp-service-$BRANCH
+
+            docker login ghcr.io -u ${{ github.actor }} --password-stdin <<< "${{ secrets.GITHUB_TOKEN }}"
+            docker pull $IMAGE_ID
+            docker stop $CONTAINER_NAME || true
+            docker rm $CONTAINER_NAME || true
+
+            if [ "$BRANCH" = "master" ]; then
+              DB_NAME=${{ secrets.PROD_DB_NAME }}
+              DB_PASSWORD=${{ secrets.PROD_DB_PASSWORD }}
+            else
+              DB_NAME=${{ secrets.DEV_DB_NAME }}
+              DB_PASSWORD=${{ secrets.DEV_DB_PASSWORD }}
+            fi
+
+            docker run -d \
+              --name $CONTAINER_NAME \
+              --restart unless-stopped \
+              --network host \
+              -e DB_NAME="$DB_NAME" \
+              -e DB_HOST="${{ secrets.DB_HOST }}" \
+              -e DB_PORT="${{ secrets.DB_PORT }}" \
+              -e DB_USER="${{ secrets.DB_USER }}" \
+              -e DB_PASSWORD="$DB_PASSWORD" \
+              -e WHATSAPP_API_URL="${{ secrets.WHATSAPP_API_URL }}" \
+              -e WHATSAPP_API_VERSION="${{ secrets.WHATSAPP_API_VERSION }}" \
+              -e JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+              -e SUPER_ADMIN_SECRET="${{ secrets.SUPER_ADMIN_SECRET }}" \
+              -e ACCESS_TOKEN_EXPIRE_MINUTES="${{ secrets.ACCESS_TOKEN_EXPIRE_MINUTES }}" \
+              $IMAGE_ID
