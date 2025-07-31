@@ -61,9 +61,11 @@ jobs:
             if [ "$BRANCH" = "master" ]; then
               DB_NAME=${{ secrets.PROD_DB_NAME }}
               DB_PASSWORD=${{ secrets.PROD_DB_PASSWORD }}
+              APP_PORT=8001
             else
               DB_NAME=${{ secrets.DEV_DB_NAME }}
               DB_PASSWORD=${{ secrets.DEV_DB_PASSWORD }}
+              APP_PORT=8002
             fi
 
             docker run -d \
@@ -80,4 +82,5 @@ jobs:
               -e JWT_SECRET="${{ secrets.JWT_SECRET }}" \
               -e SUPER_ADMIN_SECRET="${{ secrets.SUPER_ADMIN_SECRET }}" \
               -e ACCESS_TOKEN_EXPIRE_MINUTES="${{ secrets.ACCESS_TOKEN_EXPIRE_MINUTES }}" \
+              -e APP_PORT="$APP_PORT" \
               $IMAGE_ID
