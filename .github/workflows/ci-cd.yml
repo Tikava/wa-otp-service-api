@@ -20,10 +20,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    env:
-      BRANCH: ${{ github.ref_name != '' && github.ref_name || github.event.inputs.environment }}
-      IMAGE_ID: ghcr.io/${{ github.repository }}-${{ github.ref_name != '' && github.ref_name || github.event.inputs.environment }}:latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -36,6 +32,11 @@ jobs:
 
       - name: Build and Push Docker image to GHCR
         run: |
+          BRANCH=${{ github.ref_name != '' && github.ref_name || github.event.inputs.environment }}
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_ID="ghcr.io/${REPO_LOWER}-${BRANCH}:latest"
+
+          echo "Building image: $IMAGE_ID"
           docker build -t $IMAGE_ID .
           docker push $IMAGE_ID
 
@@ -46,10 +47,12 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            BRANCH=${BRANCH:-${{ github.ref_name || github.event.inputs.environment }}}
-            IMAGE_ID=ghcr.io/${{ github.repository }}-$BRANCH:latest
-            CONTAINER_NAME=wa-otp-service-$BRANCH
+            BRANCH=${{ github.ref_name != '' && github.ref_name || github.event.inputs.environment }}
+            REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+            IMAGE_ID="ghcr.io/${REPO_LOWER}-${BRANCH}:latest"
+            CONTAINER_NAME="wa-otp-service-${BRANCH}"
 
+            echo "Deploying container: $CONTAINER_NAME"
             docker login ghcr.io -u ${{ github.actor }} --password-stdin <<< "${{ secrets.GITHUB_TOKEN }}"
             docker pull $IMAGE_ID
             docker stop $CONTAINER_NAME || true
