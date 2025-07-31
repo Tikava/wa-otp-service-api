@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     db_port: int
     db_user: str
     db_password: str
+    app_port: int
 
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8')
     
